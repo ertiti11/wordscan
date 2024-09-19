@@ -28,13 +28,19 @@ def print_warning(text):
 def print_error(text):
     print(f"{Fore.RED}[-] {Fore.WHITE}{Style.BRIGHT}{text}{Style.RESET_ALL}")
 
+def print_header_table(headers):
+    print_header("HTTP Headers:")
+    print(f"{Fore.WHITE}{Style.BRIGHT}{'Name':<30} {'Value':<70}{Style.RESET_ALL}")
+    print(f"{Fore.WHITE}{'-' * 30} { '-' * 70}{Style.RESET_ALL}")
+    for header, value in headers.items():
+        print(f"{Fore.MAGENTA}{header:<30} {Fore.WHITE}{value:<70}{Style.RESET_ALL}")
+
 def get_headers(url):
     try:
         response = requests.get(url, headers={"User-Agent": USER_AGENT})
         headers = response.headers
         print_header(f"Headers for {url}:")
-        for header, value in headers.items():
-            print(f"{Fore.MAGENTA}{header}: {value}{Style.RESET_ALL}")
+        print_header_table(headers)
     except requests.exceptions.RequestException as e:
         print_error(f"Error fetching {url}: {e}")
 
@@ -75,7 +81,6 @@ def check_feeds(url):
         try:
             response = requests.get(feed_url, headers={"User-Agent": USER_AGENT})
             if response.status_code == 200:
-                print_success(f"Feed found at: {feed_url}")
                 if 'gzip' in response.headers.get('Content-Encoding', ''):
                     content = decompress_content(response.content)
                 else:
@@ -148,6 +153,7 @@ def detect_theme_selenium(url):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Fetch and display HTTP headers from a given URL and check for specific WordPress files.")
     parser.add_argument("-u", "--url", type=str, required=True, help="The URL to analyze.")
+    parser.add_argument("--selenium", action='store_true', help="Use Selenium to detect theme")
 
     args = parser.parse_args()
 
@@ -166,4 +172,3 @@ if __name__ == "__main__":
     # Detect WordPress theme
     if not detect_theme(args.url):
         detect_theme_selenium(args.url)
-        
