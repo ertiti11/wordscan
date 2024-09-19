@@ -91,39 +91,13 @@ def check_feeds(url):
                 else:
                     print_error(f"WordPress version not found in {feed_path}.")
                 found_any_feed = True
-            else:
-                print_warning(f"Feed not found at: {feed_url}")
         except requests.exceptions.RequestException as e:
             print_error(f"Error fetching {feed_url}: {e}")
     
     if not found_any_feed:
         print_warning("No WordPress feeds found.")
 
-def detect_theme(url):
-    print_header("Detecting WordPress theme via requests:")
-    try:
-        response = requests.get(url, headers={"User-Agent": USER_AGENT})
-        if response.status_code == 200:
-            # Busca todos los links a archivos CSS en el HTML
-            css_files = re.findall(r'<link[^>]+href="([^"]+)"', response.text)
-            theme_found = False
-            print_header("CSS files found:")
-            for css_file in css_files:
-                if '/wp-content/themes/' in css_file:
-                    theme_match = re.search(r'/wp-content/themes/([a-zA-Z0-9-_]+)/', css_file)
-                    if theme_match:
-                        theme_name = theme_match.group(1)
-                        print_success(f"WordPress theme detected: {theme_name}")
-                        theme_found = True
-                        break
-            if not theme_found:
-                print_error("WordPress theme not found in the HTML.")
-                return False
-    except requests.exceptions.RequestException as e:
-        print_error(f"Error fetching {url}: {e}")
-
-def detect_theme_selenium(url):
-    print_header("Detecting WordPress theme via Selenium:")
+def get_source(url):
     chrome_options = Options()
     chrome_options.add_argument("--headless")  # Ejecuta Chrome en modo sin cabeza
     chrome_options.add_argument("--no-sandbox")
@@ -135,7 +109,11 @@ def detect_theme_selenium(url):
     # Obtén el contenido de la página después de que se haya cargado completamente
     html = driver.page_source
     driver.quit()
+    return html
 
+
+def detect_theme_selenium(html):
+    print_header("Detecting WordPress theme via Selenium:")
     # Busca los temas en el HTML
     css_files = re.findall(r'<link[^>]+href="([^"]+)"', html)
     theme_found = False
@@ -157,6 +135,9 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    html = get_source(args.url)
+    
+
     # Fetch and display headers
     get_headers(args.url)
     
@@ -170,5 +151,4 @@ if __name__ == "__main__":
     check_feeds(args.url)
     
     # Detect WordPress theme
-    if not detect_theme(args.url):
-        detect_theme_selenium(args.url)
+    detect_theme_selenium(html)
