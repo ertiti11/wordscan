@@ -2,30 +2,46 @@ import requests
 import argparse
 from urllib.parse import urljoin
 import re
+from colorama import init, Fore, Style
+
+# Initialize colorama
+init()
 
 # Define the User-Agent string for Google Chrome
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+
+def print_header(text):
+    print(f"{Fore.CYAN}{Style.BRIGHT}{text}{Style.RESET_ALL}")
+
+def print_success(text):
+    print(f"{Fore.GREEN}{Style.BRIGHT}{text}{Style.RESET_ALL}")
+
+def print_warning(text):
+    print(f"{Fore.YELLOW}{Style.BRIGHT}{text}{Style.RESET_ALL}")
+
+def print_error(text):
+    print(f"{Fore.RED}{Style.BRIGHT}{text}{Style.RESET_ALL}")
 
 def get_headers(url):
     try:
         response = requests.get(url, headers={"User-Agent": USER_AGENT})
         headers = response.headers
-        print(f"Headers for {url}:")
+        print_header(f"Headers for {url}:")
         for header, value in headers.items():
-            print(f"{header}: {value}")
+            print(f"{Fore.MAGENTA}{header}: {value}{Style.RESET_ALL}")
     except requests.exceptions.RequestException as e:
-        print(f"Error fetching {url}: {e}")
+        print_error(f"Error fetching {url}: {e}")
 
 def check_file(url, filename):
     file_url = urljoin(url, filename)
     try:
         response = requests.get(file_url, headers={"User-Agent": USER_AGENT})
         if response.status_code == 200:
-            print(f"'{filename}' found at: {file_url}")
+            print_success(f"'{filename}' found at: {file_url}")
         else:
-            print(f"'{filename}' not found at: {file_url}")
+            print_warning(f"'{filename}' not found at: {file_url}")
     except requests.exceptions.RequestException as e:
-        print(f"Error fetching {file_url}: {e}")
+        print_error(f"Error fetching {file_url}: {e}")
 
 def get_wordpress_version(content):
     # Busca en el contenido un meta tag o comentario que indique la versión de WordPress
@@ -48,20 +64,20 @@ def check_feeds(url):
         try:
             response = requests.get(feed_url, headers={"User-Agent": USER_AGENT})
             if response.status_code == 200:
-                print(f"Feed found at: {feed_url}")
+                print_success(f"Feed found at: {feed_url}")
                 version = get_wordpress_version(response.text)
                 if version:
-                    print(f"WordPress version detected from {feed_path}: {version}")
+                    print_success(f"WordPress version detected from {feed_path}: {version}")
                 else:
-                    print(f"WordPress version not found in {feed_path}.")
+                    print_warning(f"WordPress version not found in {feed_path}.")
                 found_any_feed = True
             else:
-                print(f"Feed not found at: {feed_url}")
+                print_warning(f"Feed not found at: {feed_url}")
         except requests.exceptions.RequestException as e:
-            print(f"Error fetching {feed_url}: {e}")
+            print_error(f"Error fetching {feed_url}: {e}")
     
     if not found_any_feed:
-        print("No WordPress feeds found.")
+        print_warning("No WordPress feeds found.")
 
 def detect_theme(url):
     try:
@@ -70,22 +86,22 @@ def detect_theme(url):
             # Busca todos los links a archivos CSS en el HTML
             css_files = re.findall(r'<link[^>]+href="([^"]+)"', response.text)
             theme_found = False
-            print(css_files)
+            print_header("CSS files found:")
             for css_file in css_files:
+                print(f"{Fore.CYAN}{css_file}{Style.RESET_ALL}")
                 if '/wp-content/themes/' in css_file:
                     theme_match = re.search(r'/wp-content/themes/([a-zA-Z0-9-_]+)/', css_file)
-                    print('/wp-content/themes/')
                     if theme_match:
                         theme_name = theme_match.group(1)
-                        print(f"WordPress theme detected: {theme_name}")
+                        print_success(f"WordPress theme detected: {theme_name}")
                         theme_found = True
                         break
             if not theme_found:
-                print("WordPress theme not found in the HTML.")
+                print_warning("WordPress theme not found in the HTML.")
         else:
-            print(f"Error fetching {url}: {response.status_code}")
+            print_error(f"Error fetching {url}: {response.status_code}")
     except requests.exceptions.RequestException as e:
-        print(f"Error fetching {url}: {e}")
+        print_error(f"Error fetching {url}: {e}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Fetch and display HTTP headers from a given URL and check for specific WordPress files.")
@@ -105,4 +121,5 @@ if __name__ == "__main__":
     # Check WordPress feeds
     check_feeds(args.url)
     
+    # Detect WordPress theme
     detect_theme(args.url)
