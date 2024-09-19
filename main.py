@@ -3,6 +3,12 @@ import argparse
 from urllib.parse import urljoin
 import re
 from colorama import init, Fore, Style
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.chrome.options import Options
+from io import BytesIO
+import gzip
 
 # Initialize colorama
 init()
@@ -11,16 +17,16 @@ init()
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
 
 def print_header(text):
-    print(f"{Fore.CYAN}{Style.BRIGHT}{text}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}[i] {Fore.WHITE}{Style.BRIGHT}{text}{Style.RESET_ALL}")
 
 def print_success(text):
-    print(f"{Fore.GREEN}{Style.BRIGHT}{text}{Style.RESET_ALL}")
+    print(f"{Fore.GREEN}[+] {Fore.WHITE}{Style.BRIGHT}{text}{Style.RESET_ALL}")
 
 def print_warning(text):
-    print(f"{Fore.YELLOW}{Style.BRIGHT}{text}{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}[!] {Fore.WHITE}{Style.BRIGHT}{text}{Style.RESET_ALL}")
 
 def print_error(text):
-    print(f"{Fore.RED}{Style.BRIGHT}{text}{Style.RESET_ALL}")
+    print(f"{Fore.RED}[-] {Fore.WHITE}{Style.BRIGHT}{text}{Style.RESET_ALL}")
 
 def get_headers(url):
     try:
@@ -51,6 +57,11 @@ def get_wordpress_version(content):
     else:
         return None
 
+def decompress_content(content):
+    buf = BytesIO(content)
+    f = gzip.GzipFile(fileobj=buf)
+    return f.read().decode('utf-8')
+
 def check_feeds(url):
     feeds = [
         "feed",
@@ -65,11 +76,15 @@ def check_feeds(url):
             response = requests.get(feed_url, headers={"User-Agent": USER_AGENT})
             if response.status_code == 200:
                 print_success(f"Feed found at: {feed_url}")
-                version = get_wordpress_version(response.text)
+                if 'gzip' in response.headers.get('Content-Encoding', ''):
+                    content = decompress_content(response.content)
+                else:
+                    content = response.text
+                version = get_wordpress_version(content)
                 if version:
                     print_success(f"WordPress version detected from {feed_path}: {version}")
                 else:
-                    print_warning(f"WordPress version not found in {feed_path}.")
+                    print_error(f"WordPress version not found in {feed_path}.")
                 found_any_feed = True
             else:
                 print_warning(f"Feed not found at: {feed_url}")
@@ -80,6 +95,7 @@ def check_feeds(url):
         print_warning("No WordPress feeds found.")
 
 def detect_theme(url):
+    print_header("Detecting WordPress theme via requests:")
     try:
         response = requests.get(url, headers={"User-Agent": USER_AGENT})
         if response.status_code == 200:
@@ -88,7 +104,6 @@ def detect_theme(url):
             theme_found = False
             print_header("CSS files found:")
             for css_file in css_files:
-                print(f"{Fore.CYAN}{css_file}{Style.RESET_ALL}")
                 if '/wp-content/themes/' in css_file:
                     theme_match = re.search(r'/wp-content/themes/([a-zA-Z0-9-_]+)/', css_file)
                     if theme_match:
@@ -97,16 +112,43 @@ def detect_theme(url):
                         theme_found = True
                         break
             if not theme_found:
-                print_warning("WordPress theme not found in the HTML.")
-        else:
-            print_error(f"Error fetching {url}: {response.status_code}")
+                print_error("WordPress theme not found in the HTML.")
+                return False
     except requests.exceptions.RequestException as e:
         print_error(f"Error fetching {url}: {e}")
+
+def detect_theme_selenium(url):
+    print_header("Detecting WordPress theme via Selenium:")
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")  # Ejecuta Chrome en modo sin cabeza
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+    driver.get(url)
+
+    # Obtén el contenido de la página después de que se haya cargado completamente
+    html = driver.page_source
+    driver.quit()
+
+    # Busca los temas en el HTML
+    css_files = re.findall(r'<link[^>]+href="([^"]+)"', html)
+    theme_found = False
+    for css_file in css_files:
+        if '/wp-content/themes/' in css_file:
+            theme_match = re.search(r'/wp-content/themes/([a-zA-Z0-9-_]+)/', css_file)
+            if theme_match:
+                theme_name = theme_match.group(1)
+                print_success(f"WordPress theme detected: {theme_name}")
+                theme_found = True
+                break
+    if not theme_found:
+        print_error("WordPress theme not found in the HTML.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Fetch and display HTTP headers from a given URL and check for specific WordPress files.")
     parser.add_argument("-u", "--url", type=str, required=True, help="The URL to analyze.")
-    
+
     args = parser.parse_args()
 
     # Fetch and display headers
@@ -122,4 +164,6 @@ if __name__ == "__main__":
     check_feeds(args.url)
     
     # Detect WordPress theme
-    detect_theme(args.url)
+    if not detect_theme(args.url):
+        detect_theme_selenium(args.url)
+        
